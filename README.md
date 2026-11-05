@@ -112,11 +112,11 @@ grep -o 'android.permission.[A-Z_]*' app/src/main/AndroidManifest.xml | sort -u
 ### 3. Fork it
 - On GitHub: click **Fork** (top-right of the repo), or with the GitHub CLI:
   ```bash
-  gh repo fork gdr1999/gpay-ready --clone
+  gh repo fork gdr1999/gpay-india-accessibility-fix --clone
   ```
 - Or clone directly:
   ```bash
-  git clone https://github.com/gdr1999/gpay-ready.git
+  git clone https://github.com/gdr1999/gpay-india-accessibility-fix.git
   cd gpay-ready
   ```
 
