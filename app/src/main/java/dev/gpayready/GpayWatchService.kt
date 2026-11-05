@@ -29,6 +29,8 @@ class GpayWatchService : Service() {
     private lateinit var handler: Handler
     private var lastQuery = 0L
     private var inGpay = false
+    private var lastGpayForegroundAt = 0L
+    private var pendingRestore = false
 
     private val poll = object : Runnable {
         override fun run() {
@@ -63,12 +65,26 @@ class GpayWatchService : Service() {
             @Suppress("DEPRECATION")
             if (e.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND) fg = e.packageName
         }
-        if (fg == null) return
-        if (fg == GpayFix.GPAY && !inGpay) {
-            inGpay = true
-            GpayFix.disableAccessibility(applicationContext)
-        } else if (fg != GpayFix.GPAY && inGpay) {
+
+        if (fg == GpayFix.GPAY) {
+            // In Google Pay: make sure accessibility is off, and cancel any pending restore (so a brief
+            // background dip during payment — OTP app, bank redirect — doesn't restore mid-payment).
+            lastGpayForegroundAt = now
+            pendingRestore = false
+            if (!inGpay) {
+                inGpay = true
+                GpayFix.disableAccessibility(applicationContext)
+            }
+            return
+        }
+        // A different app is foreground: mark that we've left Google Pay, then restore only after it's
+        // stayed away for the debounce window (so flipping to GPay and back doesn't re-block payment).
+        if (fg != null && inGpay) {
             inGpay = false
+            pendingRestore = true
+        }
+        if (pendingRestore && now - lastGpayForegroundAt >= RESTORE_DELAY_MS) {
+            pendingRestore = false
             GpayFix.restoreAccessibility(applicationContext)
         }
     }
@@ -102,6 +118,9 @@ class GpayWatchService : Service() {
 
     companion object {
         private const val CH = "gpay_auto"
+        /** Wait this long after Google Pay leaves the foreground before restoring accessibility, so a
+         *  brief mid-payment background (OTP app, bank redirect) doesn't restore early and re-block. */
+        private const val RESTORE_DELAY_MS = 4000L
         fun start(ctx: Context) {
             val i = Intent(ctx, GpayWatchService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ctx.startForegroundService(i)
