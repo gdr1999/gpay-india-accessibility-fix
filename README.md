@@ -13,6 +13,12 @@ Pay's check wants. This app does that in one tap, with no root and no Shizuku.
 > phones / Android versions.** It uses standard Android settings, so it should work on other devices,
 > but please report back.
 
+> **How this was built — full transparency:** this is a "vibe-coded" app. I built it with
+> [Claude Code](https://www.anthropic.com/claude-code) and I don't know the nitty-gritties of the code
+> myself. It uses standard, documented Android APIs (no root, no Shizuku), but **please read the source
+> and the permissions before you trust it** — especially since it requests `WRITE_SECURE_SETTINGS`.
+> Review, issues, and PRs from people who do know the internals are very welcome.
+
 ## ⚠️ Required one-time setup (needs a computer with adb, once)
 
 This app **cannot do anything until you grant it one permission over adb**. There is **no on-device way**
