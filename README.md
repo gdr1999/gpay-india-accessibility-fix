@@ -1,13 +1,18 @@
 # GPay Ready
 
-A tiny, no-root Android utility that fixes **Google Pay India refusing payments when a legitimate
+A tiny, no-root Android utility that fixes **banking / payment apps refusing to work when a legitimate
 accessibility app is enabled** (MacroDroid, custom launchers, side-bar/gesture apps, etc.).
 
-Recent Google Pay builds flag any accessibility service that *looks like* an automation tool and show
-**"Something went wrong and your payment can't be completed"** / **"Close screen sharing app"** — even
-though those apps are legitimate and the user installed them on purpose. The only reliable fix is to
-turn accessibility **off while you pay** and back **on afterwards**, which is exactly the state Google
-Pay's check wants. This app does that in one tap, with no root and no Shizuku.
+Google Pay and many banking apps flag any accessibility service that *looks like* an automation tool —
+and also **Developer Options / USB debugging** — and then block the action (e.g. Google Pay's
+**"Something went wrong and your payment can't be completed"** / **"Close screen sharing app"**), even
+though those apps are legitimate and you installed them on purpose. The reliable fix is to turn
+accessibility (and Developer Options / USB debugging) **off while you use the app** and back **on
+afterwards** — exactly the state these apps want. This app does that in one tap, no root, no Shizuku.
+
+**Works with any apps you pick — select one or more.** Choose any banking/finance apps (or any apps) as
+targets; the manual fix and the automation both use your selection. Any/all banking apps can be added.
+Google Pay is just the default.
 
 > Tested on a **Pixel 11, Android 17 (QPR3 Beta 3)** — works perfectly there. **Not yet tried on other
 > phones / Android versions.** It uses standard Android settings, so it should work on other devices,
@@ -36,33 +41,42 @@ Without this grant the accessibility toggle silently does nothing.
 
 ## What it does
 
-One tap (button, Quick Settings tile, or from MacroDroid/Tasker/launcher) runs:
+First, **pick your target apps** in the app (default Google Pay — select one or more banking/finance apps,
+or any apps). Then one tap (button, Quick Settings tile, home-screen icon, or from
+MacroDroid/Tasker/launcher) runs:
 
 1. **Turn accessibility OFF** — saves your currently-enabled accessibility services, then clears them.
-2. **Stop Google Pay** and **Stop Play Services** — kills their cached background processes so they
+2. **Turn Developer Options + USB/Wireless debugging OFF** — remembering what was on, to put back later.
+3. **Stop the target app** and **Stop Play Services** — kills their cached background processes so they
    re-check cleanly on next open.
-3. **Open Google Pay** — ready to pay.
+4. **Open the target app** — ready to use.
 
-Afterwards, **Restore accessibility** (button / QS tile / automation) turns your services back on.
+Afterwards, **Restore everything** (button / QS tile / automation) turns accessibility **and** Developer
+Options / USB debugging back on — restoring only what was actually on before.
 
 ### Automation (optional, Usage Access — not accessibility)
 
-Enable **Auto** in the app and it watches the foreground app via **Usage Access**: accessibility is
-turned **off the moment Google Pay comes to the front**, and **restored the moment you leave it**. So
-your automation apps are only off for the few seconds you're actually in Google Pay.
+Enable **Auto** in the app and it watches the foreground app via **Usage Access**: when any chosen app comes to the front it turns accessibility (and Developer Options / debugging) **off**, and **restores
+them the moment you leave the app** (with a short debounce so a mid-payment OTP/bank-redirect dip doesn't
+restore early). So your automation apps are only off for the few seconds you're actually using it. This
+works for **any app you select**, not just Google Pay.
 
 ## How it works (no root, no Shizuku, no debugging left on)
 
 | Step | Mechanism | Permission |
 |------|-----------|------------|
-| Accessibility off/on | writes the `enabled_accessibility_services` secure setting (saved & restored) | `WRITE_SECURE_SETTINGS` — granted **once over adb** |
-| Stop GPay / Play Services | `ActivityManager.killBackgroundProcesses()` | `KILL_BACKGROUND_PROCESSES` (normal, auto-granted) |
+| Accessibility off/on | writes `enabled_accessibility_services` (saved & restored) | `WRITE_SECURE_SETTINGS` — granted **once over adb** |
+| Dev Options / USB debugging off/on | writes `development_settings_enabled` / `adb_enabled` / `adb_wifi_enabled` (saved & restored) | `WRITE_SECURE_SETTINGS` |
+| Stop target app / Play Services | `ActivityManager.killBackgroundProcesses()` | `KILL_BACKGROUND_PROCESSES` (normal, auto-granted) |
 | Auto on open/close | `UsageStatsManager` foreground-app events | Usage Access (granted in Settings) |
 
-No Shizuku and no wireless/USB debugging are used, because banking apps also read developer/ADB state.
-`killBackgroundProcesses` is **not** a full `am force-stop` (it won't stop a running foreground
-service), but turning accessibility off is the actual block-clear; the kills just nudge the cached
-state.
+No Shizuku, no root, and no wireless/USB debugging is *left on* — the fix turns debugging off (banking
+apps read that state). `killBackgroundProcesses` is **not** a full `am force-stop` (it won't stop a
+running foreground service), but turning accessibility off is the actual block-clear; the kills just
+nudge the cached state.
+
+> Note: because the fix turns **USB debugging off**, running it drops any active adb/cable session — that's
+> intended. **Restore everything** (or the automation on close) turns it back on if it was on before.
 
 ## Setup
 
