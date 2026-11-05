@@ -89,6 +89,57 @@ state.
   control — to the state Google Pay asks for, then restores them. Use it on your own device.
 - If Google changes the check, this may need updating. PRs welcome.
 
+## Review it yourself, fork it, verify it
+
+**Don't trust — verify.** The whole app is ~480 lines of Kotlin across 8 small files, with every
+security-relevant line in **one file**. Notably, there is **no `INTERNET` permission** in the manifest,
+so it physically cannot send your data anywhere.
+
+### 1. Read the code (5 minutes)
+- [`app/src/main/java/dev/gpayready/GpayFix.kt`](app/src/main/java/dev/gpayready/GpayFix.kt) — **this is the
+  whole thing**: what gets toggled, saved, killed, opened. Read this first.
+- [`app/src/main/AndroidManifest.xml`](app/src/main/AndroidManifest.xml) — every permission it requests
+  (7 total; no INTERNET).
+- `GpayWatchService.kt` — the optional Usage-Access automation. The rest are tiny glue (tile, trampoline,
+  MacroDroid shortcut, receivers).
+
+### 2. Confirm what it can and can't do
+```bash
+# list every permission the app declares — should match the README table, with NO internet
+grep -o 'android.permission.[A-Z_]*' app/src/main/AndroidManifest.xml | sort -u
+```
+
+### 3. Fork it
+- On GitHub: click **Fork** (top-right of the repo), or with the GitHub CLI:
+  ```bash
+  gh repo fork gdr1999/gpay-ready --clone
+  ```
+- Or clone directly:
+  ```bash
+  git clone https://github.com/gdr1999/gpay-ready.git
+  cd gpay-ready
+  ```
+
+### 4. Build it yourself (don't run someone else's APK)
+Needs JDK 17+ and the Android SDK (`ANDROID_HOME` set).
+```bash
+./gradlew :app:assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb shell pm grant dev.gpayready android.permission.WRITE_SECURE_SETTINGS
+```
+
+### 5. Verify a prebuilt APK matches the source (optional)
+If you downloaded an APK instead of building, confirm it only declares the expected permissions:
+```bash
+# decode the APK and inspect its real manifest (needs apktool)
+apktool d app-debug.apk -o out
+grep -o 'android.permission.[A-Z_]*' out/AndroidManifest.xml | sort -u
+# or decompile to Java to read the logic (needs jadx)
+jadx app-debug.apk -d jadx-out && less jadx-out/sources/dev/gpayready/GpayFix.java
+```
+
+PRs, issues, and security reviews from people who know Android internals are very welcome.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
