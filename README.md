@@ -13,6 +13,21 @@ Pay's check wants. This app does that in one tap, with no root and no Shizuku.
 > phones / Android versions.** It uses standard Android settings, so it should work on other devices,
 > but please report back.
 
+## ⚠️ Required one-time setup (needs a computer with adb, once)
+
+This app **cannot do anything until you grant it one permission over adb**. There is **no on-device way**
+to grant `WRITE_SECURE_SETTINGS` — you must connect the phone to a computer **once** and run:
+
+```
+adb shell pm grant dev.gpayready android.permission.WRITE_SECURE_SETTINGS
+```
+
+- **No root, no Shizuku.** It's a one-time command; you never need the computer again afterwards.
+- It's the same documented grant the "Dev Options toggler" apps use. Revoke any time with `pm revoke`.
+- Everything else (Usage Access for the automation, the Quick Settings tile) is granted **on-device**, no computer.
+
+Without this grant the accessibility toggle silently does nothing.
+
 ## What it does
 
 One tap (button, Quick Settings tile, or from MacroDroid/Tasker/launcher) runs:
