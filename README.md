@@ -2,20 +2,25 @@
 
 <p align="center">
   <a href="https://github.com/gdr1999/gpay-india-accessibility-fix/releases/latest/download/GPayReady.apk">
-    <img src="https://img.shields.io/badge/⬇%20Download-APK-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Download the APK">
+    <img src="docs/download-apk.svg" alt="Download APK" height="54">
   </a>
-  &nbsp;
-  <a href="https://github.com/gdr1999/gpay-india-accessibility-fix/releases/latest">
-    <img src="https://img.shields.io/github/v/release/gdr1999/gpay-india-accessibility-fix?style=for-the-badge&label=version&color=2563EB" alt="Latest release">
-  </a>
-  &nbsp;
-  <img src="https://img.shields.io/badge/license-MIT-black?style=for-the-badge" alt="MIT License">
 </p>
 
-<p align="center"><sub>⬇ downloads the APK directly · then run the one-time adb setup (below)</sub></p>
+<p align="center">
+  <a href="https://github.com/gdr1999/gpay-india-accessibility-fix/releases/latest"><img src="https://img.shields.io/github/v/release/gdr1999/gpay-india-accessibility-fix?label=version&color=1f883d" alt="Latest release"></a>
+  <img src="https://img.shields.io/badge/license-MIT-black" alt="MIT License">
+  <img src="https://img.shields.io/badge/no%20root-required-success" alt="No root required">
+</p>
+
+<p align="center"><sub>Downloads the APK directly · then run the one-time adb setup (below)</sub></p>
 
 A tiny, no-root Android utility that fixes **banking / payment apps refusing to work when a legitimate
 accessibility app is enabled** (MacroDroid, custom launchers, side-bar/gesture apps, etc.).
+
+> **Works with any app — not just Google Pay.** Point it at any banking / UPI / finance app
+> (PhonePe, Paytm, your bank app…) or literally any app on your phone. Select one or many — the one-tap
+> fix, the Home-screen icons, the Quick Settings tiles and the automation all use your selection.
+> Google Pay is only the default.
 
 Google Pay and many banking apps flag any accessibility service that *looks like* an automation tool —
 and also **Developer Options / USB debugging** — and then block the action (e.g. Google Pay's
