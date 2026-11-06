@@ -22,6 +22,10 @@ accessibility app is enabled** (MacroDroid, custom launchers, side-bar/gesture a
 > fix, the Home-screen icons, the Quick Settings tiles and the automation all use your selection.
 > Google Pay is only the default.
 
+<p align="center">
+  <img src="docs/screenshot-home.png" alt="GPay Ready — each selected app gets its own card: Test, Add to Home, Quick Settings tile, and a per-app restore-on-close switch" width="300">
+</p>
+
 Google Pay and many banking apps flag any accessibility service that *looks like* an automation tool —
 and also **Developer Options / USB debugging** — and then block the action (e.g. Google Pay's
 **"Something went wrong and your payment can't be completed"** / **"Close screen sharing app"**), even
