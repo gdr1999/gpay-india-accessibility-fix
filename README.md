@@ -10,6 +10,18 @@ though those apps are legitimate and you installed them on purpose. The reliable
 accessibility (and Developer Options / USB debugging) **off while you use the app** and back **on
 afterwards** — exactly the state these apps want. This app does that in one tap, no root, no Shizuku.
 
+## The problem this fixes
+
+Recent Google Pay (India) builds show this when a legitimate accessibility app (MacroDroid, a custom
+launcher, a gesture app) is enabled — and block payments until you turn accessibility off:
+
+<p align="center">
+  <img src="docs/gpay-payments-blocked.webp" alt="Google Pay: Payments blocked due to suspicious activity, take immediate action" width="320">
+</p>
+
+The apps it flags are ones you installed on purpose. GPay Ready turns accessibility off just while you
+pay (and back on after) — exactly the state this check wants — so the payment goes through.
+
 **Works with any apps you pick — select one or more.** Choose any banking/finance apps (or any apps) as
 targets; the manual fix and the automation both use your selection. Any/all banking apps can be added.
 Google Pay is just the default.
@@ -153,6 +165,26 @@ jadx app-debug.apk -d jadx-out && less jadx-out/sources/dev/gpayready/GpayFix.ja
 ```
 
 PRs, issues, and security reviews from people who know Android internals are very welcome.
+
+## Credits
+
+The core insight — that turning off the flagged accessibility services (and nudging Google Play
+services, which caches that state) clears the block without a full reboot — came from this
+r/macrodroid thread:
+
+**[Unable to make payments through Google Pay — r/macrodroid](https://www.reddit.com/r/macrodroid/comments/1v1cao7/unable_to_make_payments_through_google_pay/)**
+
+Thanks especially to:
+
+- **[u/Prophec20](https://www.reddit.com/user/Prophec20/)** — disable the automation app's accessibility (and restart the phone) before using Google Pay.
+- **[u/binomat](https://www.reddit.com/user/binomat/)** — Play services caches the accessibility-service details, so `am force-stop com.google.android.gms` clears it and Google Pay works **without** a reboot.
+
+GPay Ready automates exactly this (accessibility off → stop the app + Play services → open it, then
+restore), with no root and no manual steps.
+
+<p align="center">
+  <img src="docs/reddit-macrodroid-thread.png" alt="r/macrodroid thread: disabling the automation app's accessibility and force-stopping Google Play services fixes the Google Pay block" width="680">
+</p>
 
 ## License
 
