@@ -13,6 +13,11 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <queries>
+        <!-- See all launchable apps so the user can pick any app as the fix target. -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
         <package android:name="com.google.android.apps.nbu.paisa.user" />
         <package android:name="com.google.android.gms" />
     </queries>
@@ -22,7 +27,7 @@
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
-        android:theme="@android:style/Theme.DeviceDefault.Light.DarkActionBar">
+        android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
         <activity
             android:name=".MainActivity"
@@ -61,6 +66,29 @@
             </intent-filter>
         </service>
 
+        <!-- Per-app Quick Settings tile pool (one tile per chosen app; Android has no runtime-dynamic
+             tiles, so a fixed set is declared up front and each is bound to an app via a saved slot). -->
+        <service android:name=".AppTile0" android:exported="true" android:icon="@drawable/ic_launcher_fg"
+            android:label="GPay Ready" android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
+        <service android:name=".AppTile1" android:exported="true" android:icon="@drawable/ic_launcher_fg"
+            android:label="GPay Ready" android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
+        <service android:name=".AppTile2" android:exported="true" android:icon="@drawable/ic_launcher_fg"
+            android:label="GPay Ready" android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
+        <service android:name=".AppTile3" android:exported="true" android:icon="@drawable/ic_launcher_fg"
+            android:label="GPay Ready" android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
+        <service android:name=".AppTile4" android:exported="true" android:icon="@drawable/ic_launcher_fg"
+            android:label="GPay Ready" android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
+
         <service
             android:name=".GpayWatchService"
             android:exported="false"
@@ -86,5 +114,15 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
     </application>
 </manifest>

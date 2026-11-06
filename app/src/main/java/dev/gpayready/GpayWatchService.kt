@@ -28,9 +28,19 @@ class GpayWatchService : Service() {
     private var thread: HandlerThread? = null
     private lateinit var handler: Handler
     private var lastQuery = 0L
-    private var inGpay = false
-    private var lastGpayForegroundAt = 0L
-    private var pendingRestore = false
+    /** The last-known foreground package — STICKY: it is only updated when a new foreground event
+     *  arrives, so "no new event this tick" (sitting in an app, or idle on home) doesn't look like
+     *  "left the app". null = we haven't observed any foreground yet (no Usage Access signal). */
+    private var currentFg: String? = null
+    private var lastTargetAt = 0L
+    /** Only restore after we've actually SEEN a target app in the foreground and then left it. Without
+     *  this latch, tapping the manual fix from a non-target screen (the app, a tile) would be undone
+     *  instantly — the watcher would see "accessibility off, not in a target" and restore right away. */
+    private var armed = false
+    /** The target app we were most recently inside — decides whether leaving restores (some apps,
+     *  e.g. food-delivery / shopping apps that deep-link into Google Pay to pay, are set NOT to
+     *  restore on close, so leaving them keeps accessibility off on the way to Google Pay). */
+    private var lastTarget: String? = null
 
     private val poll = object : Runnable {
         override fun run() {
@@ -47,6 +57,7 @@ class GpayWatchService : Service() {
             thread = HandlerThread("gpaywatch").apply { start() }
             handler = Handler(thread!!.looper)
             lastQuery = System.currentTimeMillis()
+            lastTargetAt = System.currentTimeMillis()
             handler.post(poll)
         }
         return START_STICKY
@@ -59,33 +70,35 @@ class GpayWatchService : Service() {
         val events = usm.queryEvents(lastQuery - 2000, now)
         lastQuery = now
         val e = UsageEvents.Event()
-        var fg: String? = null
         while (events.hasNextEvent()) {
             events.getNextEvent(e)
             @Suppress("DEPRECATION")
-            if (e.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND) fg = e.packageName
+            if (e.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND) currentFg = e.packageName
         }
 
-        if (fg == GpayFix.GPAY) {
-            // In Google Pay: make sure accessibility is off, and cancel any pending restore (so a brief
-            // background dip during payment — OTP app, bank redirect — doesn't restore mid-payment).
-            lastGpayForegroundAt = now
-            pendingRestore = false
-            if (!inGpay) {
-                inGpay = true
-                GpayFix.disableAccessibility(applicationContext)
-            }
+        // No foreground observed yet (e.g. Usage Access not granted) → no signal, do nothing.
+        val fg = currentFg ?: return
+
+        if (GpayFix.isTarget(this, fg)) {
+            // In a target app: keep accessibility (and dev options) OFF, and ARM restore for when we
+            // leave. lastTargetAt keeps advancing while we're here, so the debounce never fires mid-use.
+            lastTargetAt = now
+            lastTarget = fg
+            armed = true
+            if (GpayFix.accessibilityOn(applicationContext)) GpayFix.disableForPay(applicationContext)
             return
         }
-        // A different app is foreground: mark that we've left Google Pay, then restore only after it's
-        // stayed away for the debounce window (so flipping to GPay and back doesn't re-block payment).
-        if (fg != null && inGpay) {
-            inGpay = false
-            pendingRestore = true
-        }
-        if (pendingRestore && now - lastGpayForegroundAt >= RESTORE_DELAY_MS) {
-            pendingRestore = false
-            GpayFix.restoreAccessibility(applicationContext)
+
+        // A non-target app is foreground. Only restore if we were armed (i.e. we were just inside a
+        // target app) and have now stayed away long enough — so the manual fix, launched from a
+        // non-target screen, is NOT instantly undone, but closing a target app DOES restore. Skip the
+        // restore if the app we just left is set NOT to restore on close (an affiliate that heads into
+        // Google Pay) — accessibility must stay off so the payment isn't blocked.
+        if (armed && now - lastTargetAt >= RESTORE_DELAY_MS) {
+            armed = false
+            if (GpayFix.restoreOnClose(applicationContext, lastTarget)) {
+                GpayFix.restoreAll(applicationContext)
+            }
         }
     }
 

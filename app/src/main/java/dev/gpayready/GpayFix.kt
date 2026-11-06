@@ -30,10 +30,105 @@ object GpayFix {
     private const val PREFS = "gpayready"
     private const val KEY_SAVED = "saved_a11y"
     private const val KEY_AUTO = "auto_enabled"
+    private const val KEY_TARGET = "target_pkg"      // legacy single (migrated)
+    private const val KEY_TARGETS = "target_pkgs"    // newline-joined, ordered; first = primary
+
+    data class AppItem(val pkg: String, val label: String)
+
+    /** The apps the fix targets + the automation watches (default [Google Pay]; user can pick several). */
+    fun targetPackages(ctx: Context): List<String> {
+        val raw = prefs(ctx).getString(KEY_TARGETS, null)
+        if (!raw.isNullOrBlank()) return raw.split("\n").filter { it.isNotBlank() }
+        // migrate the old single-app setting
+        return listOf(prefs(ctx).getString(KEY_TARGET, GPAY).orEmpty().ifBlank { GPAY })
+    }
+
+    fun setTargetPackages(ctx: Context, pkgs: List<String>) {
+        val clean = pkgs.distinct().filter { it.isNotBlank() }.ifEmpty { listOf(GPAY) }
+        prefs(ctx).edit().putString(KEY_TARGETS, clean.joinToString("\n")).apply()
+    }
+
+    /** Remove one app from the selection (from its card's ×), freeing its QS-tile slot and clearing
+     *  its per-app restore override. If it was the last one, the selection falls back to Google Pay. */
+    fun removeTarget(ctx: Context, pkg: String) {
+        setTargetPackages(ctx, targetPackages(ctx).filterNot { it == pkg })
+        for (i in 0 until TILE_SLOTS) if (tileSlotApp(ctx, i) == pkg) { setTileSlotApp(ctx, i, null); setTileIcon(ctx, i, "") }
+        setRestoreOnClose(ctx, pkg, true)
+    }
+
+    /** The app the one-tap fix opens (the first selected). */
+    fun primaryTarget(ctx: Context): String = targetPackages(ctx).firstOrNull() ?: GPAY
+    fun isTarget(ctx: Context, pkg: String?): Boolean = pkg != null && pkg in targetPackages(ctx)
+
+    private fun labelOf(ctx: Context, pkg: String): String = runCatching {
+        val pm = ctx.packageManager
+        pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
+    }.getOrDefault(pkg)
+
+    fun primaryLabel(ctx: Context): String = labelOf(ctx, primaryTarget(ctx))
+
+    /** "Google Pay" for one, or "Google Pay +2" for several. */
+    fun targetsLabel(ctx: Context): String {
+        val pkgs = targetPackages(ctx)
+        val first = labelOf(ctx, pkgs.firstOrNull() ?: GPAY)
+        return if (pkgs.size <= 1) first else "$first +${pkgs.size - 1}"
+    }
+
+    /** Installed apps that have a launcher entry, for the picker (A→Z). */
+    fun launchableApps(ctx: Context): List<AppItem> = runCatching {
+        val pm = ctx.packageManager
+        val main = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        pm.queryIntentActivities(main, 0)
+            .map { AppItem(it.activityInfo.packageName, it.loadLabel(pm).toString()) }
+            .distinctBy { it.pkg }
+            .sortedBy { it.label.lowercase() }
+    }.getOrDefault(emptyList())
+
+    fun labelFor(ctx: Context, pkg: String): String = labelOf(ctx, pkg)
+
+    // --- per-app "restore accessibility when this app closes" (default ON) ---
+    // Apps in this set do NOT restore when you leave them — for affiliated apps (food delivery,
+    // shopping) that DEEP-LINK into Google Pay to pay: leaving them means heading to GPay, so
+    // accessibility must stay off, not snap back on.
+    private const val KEY_NO_RESTORE = "no_restore_pkgs"
+    fun noRestoreSet(ctx: Context): Set<String> =
+        prefs(ctx).getString(KEY_NO_RESTORE, "").orEmpty().split("\n").filter { it.isNotBlank() }.toSet()
+    fun restoreOnClose(ctx: Context, pkg: String?): Boolean = pkg != null && pkg !in noRestoreSet(ctx)
+    fun setRestoreOnClose(ctx: Context, pkg: String, on: Boolean) {
+        val s = noRestoreSet(ctx).toMutableSet()
+        if (on) s.remove(pkg) else s.add(pkg)
+        prefs(ctx).edit().putString(KEY_NO_RESTORE, s.joinToString("\n")).apply()
+    }
+
+    // --- per-app Quick Settings tile slots (a fixed pool of manifest-declared tiles) ---
+    const val TILE_SLOTS = 5
+    fun tileSlotApp(ctx: Context, slot: Int): String? = prefs(ctx).getString("qs_slot_$slot", null)
+    fun setTileSlotApp(ctx: Context, slot: Int, pkg: String?) =
+        prefs(ctx).edit().putString("qs_slot_$slot", pkg).apply()
+    /** Return the slot already assigned to [pkg], else the first free slot, else slot 0. */
+    fun assignTileSlot(ctx: Context, pkg: String): Int {
+        for (i in 0 until TILE_SLOTS) if (tileSlotApp(ctx, i) == pkg) return i
+        for (i in 0 until TILE_SLOTS) if (tileSlotApp(ctx, i).isNullOrBlank()) { setTileSlotApp(ctx, i, pkg); return i }
+        setTileSlotApp(ctx, 0, pkg); return 0
+    }
+
+    /** Per-tile icon spec: "" = the target app's own logo; "d:<drawable>" = a built-in white glyph that
+     *  tints like the system Quick Settings icons; "e:<emoji>" = a custom emoji / Unicode symbol. */
+    fun tileIcon(ctx: Context, slot: Int): String = prefs(ctx).getString("qs_icon_$slot", "").orEmpty()
+    fun setTileIcon(ctx: Context, slot: Int, spec: String) =
+        prefs(ctx).edit().putString("qs_icon_$slot", spec.trim()).apply()
 
     // These secure-setting keys are stable string constants.
     private const val ENABLED_A11Y = "enabled_accessibility_services"
     private const val A11Y_ENABLED = "accessibility_enabled"
+
+    // Developer-options / debugging keys (Settings.Global) — writable with WRITE_SECURE_SETTINGS.
+    private const val DEV = "development_settings_enabled"
+    private const val ADB = "adb_enabled"
+    private const val ADB_WIFI = "adb_wifi_enabled"
+    private const val KEY_SAVED_DEV = "saved_dev"
+    private const val KEY_SAVED_ADB = "saved_adb"
+    private const val KEY_SAVED_ADB_WIFI = "saved_adb_wifi"
 
     fun prefs(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
@@ -53,38 +148,95 @@ object GpayFix {
         true
     }.getOrDefault(false)
 
-    /** Restore the accessibility services saved by [disableAccessibility]. */
-    fun restoreAccessibility(ctx: Context): Boolean = runCatching {
+    /** Snapshot the currently-enabled services whenever they're ON, so restore always has a fresh,
+     *  correct set — even if accessibility happened to be off the last time the fix ran. */
+    fun rememberIfOn(ctx: Context) {
+        val cur = Settings.Secure.getString(ctx.contentResolver, ENABLED_A11Y).orEmpty()
+        if (cur.isNotBlank()) prefs(ctx).edit().putString(KEY_SAVED, cur).apply()
+    }
+
+    fun savedCount(ctx: Context): Int =
+        prefs(ctx).getString(KEY_SAVED, "").orEmpty().split(":").count { it.isNotBlank() }
+
+    /** Restore the accessibility services saved by [disableAccessibility] / [rememberIfOn].
+     *  Returns how many services were restored (0 = nothing was saved to restore). */
+    fun restoreAccessibility(ctx: Context): Int {
         val saved = prefs(ctx).getString(KEY_SAVED, "").orEmpty()
-        if (saved.isNotBlank()) {
+        if (saved.isBlank()) return 0
+        return runCatching {
             Settings.Secure.putString(ctx.contentResolver, ENABLED_A11Y, saved)
             Settings.Secure.putInt(ctx.contentResolver, A11Y_ENABLED, 1)
-        }
+            saved.split(":").count { it.isNotBlank() }
+        }.getOrDefault(0)
+    }
+
+    /** Turn OFF Developer Options + USB debugging + Wireless debugging, remembering their prior state so
+     *  [restoreDevOptions] can put back exactly what was on. Banking apps read these as a risk signal. */
+    fun disableDevOptions(ctx: Context): Boolean = runCatching {
+        val cr = ctx.contentResolver
+        fun g(k: String) = runCatching { Settings.Global.getInt(cr, k, 0) }.getOrDefault(0)
+        prefs(ctx).edit()
+            .putInt(KEY_SAVED_DEV, g(DEV)).putInt(KEY_SAVED_ADB, g(ADB)).putInt(KEY_SAVED_ADB_WIFI, g(ADB_WIFI))
+            .apply()
+        runCatching { Settings.Global.putInt(cr, ADB, 0) }
+        runCatching { Settings.Global.putInt(cr, ADB_WIFI, 0) }
+        runCatching { Settings.Global.putInt(cr, DEV, 0) }
         true
     }.getOrDefault(false)
+
+    /** Put Developer Options / debugging back to whatever was on before [disableDevOptions]. */
+    fun restoreDevOptions(ctx: Context) = runCatching {
+        val cr = ctx.contentResolver
+        val p = prefs(ctx)
+        if (p.getInt(KEY_SAVED_DEV, 0) == 1) runCatching { Settings.Global.putInt(cr, DEV, 1) }
+        if (p.getInt(KEY_SAVED_ADB, 0) == 1) runCatching { Settings.Global.putInt(cr, ADB, 1) }
+        if (p.getInt(KEY_SAVED_ADB_WIFI, 0) == 1) runCatching { Settings.Global.putInt(cr, ADB_WIFI, 1) }
+    }
+
+    /** The full "get ready to pay" state: accessibility OFF + Developer Options / debugging OFF. */
+    fun disableForPay(ctx: Context) {
+        disableAccessibility(ctx)
+        disableDevOptions(ctx)
+    }
+
+    /** Restore everything the fix turned off (Developer Options + accessibility). Returns a11y count. */
+    fun restoreAll(ctx: Context): Int {
+        restoreDevOptions(ctx)
+        return restoreAccessibility(ctx)
+    }
 
     /** Kill an app's cached/background process (headless; needs only KILL_BACKGROUND_PROCESSES). */
     fun killBackground(ctx: Context, pkg: String) = runCatching {
         ctx.getSystemService(ActivityManager::class.java)?.killBackgroundProcesses(pkg)
     }
 
-    fun openGpay(ctx: Context) = runCatching {
-        ctx.packageManager.getLaunchIntentForPackage(GPAY)
+    fun openApp(ctx: Context, pkg: String) = runCatching {
+        ctx.packageManager.getLaunchIntentForPackage(pkg)
             ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             ?.let { ctx.startActivity(it) }
     }
 
-    /** The full fix: accessibility OFF → stop Google Pay → stop Play Services → open Google Pay. */
-    fun runFix(ctx: Context, open: Boolean = true) {
-        disableAccessibility(ctx)
-        killBackground(ctx, GPAY)
+    fun openTarget(ctx: Context) = openApp(ctx, primaryTarget(ctx))
+
+    /** The full fix for ONE app: accessibility OFF + Developer Options / USB-debugging OFF → stop that
+     *  app + Play Services → open it. Used by the per-app home icon and Quick Settings tile. */
+    fun runFixFor(ctx: Context, pkg: String, open: Boolean = true) {
+        disableForPay(ctx)
+        killBackground(ctx, pkg)
         killBackground(ctx, GMS)
-        if (open) openGpay(ctx)
+        if (open) openApp(ctx, pkg)
     }
+
+    /** The full fix for the primary app (the main action / generic tile). */
+    fun runFix(ctx: Context, open: Boolean = true) = runFixFor(ctx, primaryTarget(ctx), open)
 
     // --- the Usage-Access automation flag ---
     fun autoEnabled(ctx: Context): Boolean = prefs(ctx).getBoolean(KEY_AUTO, false)
     fun setAutoEnabled(ctx: Context, on: Boolean) = prefs(ctx).edit().putBoolean(KEY_AUTO, on).apply()
+
+    // --- first-run onboarding flag ---
+    fun onboarded(ctx: Context): Boolean = prefs(ctx).getBoolean("onboarded", false)
+    fun setOnboarded(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean("onboarded", v).apply()
 
     fun hasUsageAccess(ctx: Context): Boolean = runCatching {
         val ops = ctx.getSystemService(android.app.AppOpsManager::class.java) ?: return false

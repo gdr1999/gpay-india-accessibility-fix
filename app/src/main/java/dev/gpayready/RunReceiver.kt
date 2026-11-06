@@ -14,7 +14,7 @@ import android.content.Intent
 class RunReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         when (intent?.action) {
-            ACTION_RESTORE -> GpayFix.restoreAccessibility(context)
+            ACTION_RESTORE -> GpayFix.restoreAll(context)
             else -> GpayFix.runFix(context)
         }
     }
