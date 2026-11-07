@@ -113,14 +113,18 @@ on Google's side, not something wrong with your device. What was verified on-dev
   proven clear.
 - **The app can't do that last step.** On **Android 14+**, `killBackgroundProcesses()` only stops the
   app's *own* process, so it **cannot** force-stop Play Services or Google Pay, and no normal app can
-  reboot. So the app reliably turns accessibility off, but **clearing the latch is a manual reboot** (or
-  maybe the in-app **Deep reset** — not yet confirmed to clear it without a reboot).
+  reboot. So the app reliably turns accessibility off, but **clearing the latch is a manual reboot.**
+- **A force-stop does NOT clear 356's latch — only a reboot does (tested).** We force-stopped *both* Play
+  Services and Google Pay (a real `am force-stop`, what the in-app "Deep reset" does) with accessibility
+  off and **no** reboot → **still blocked.** The latch is a **cached Play Integrity / DroidGuard
+  attestation** (`tapandpay_get_last_attestation_result` in the APK); a force-stop re-reads the cached
+  verdict, only a reboot forces fresh attestation.
 
 **The reliable no-root recipe (works for everyone):**
 1. **Accessibility (+ Developer Options) OFF** — the app does this (needs the one-time adb grant below).
-2. **Reboot** to clear the latch. *(Or try the in-app **"Still blocked? Deep reset"** — App info → Force
-   stop on Play Services + Google Pay — and see if it clears without a full reboot.)*
-3. **Pay before turning accessibility back on** — turning it on re-flags you (needs another clear).
+2. **Reboot** the phone — this is the **only** confirmed way to clear the latch. (A force-stop / "Deep
+   reset" does **not** work on 356.)
+3. **Pay before turning accessibility back on** — turning it on re-flags you (needs another reboot).
 
 > **Reinstalling the app? Re-grant the permission.** The `pm grant` is **per-install** — uninstalling or
 > reinstalling **revokes** it, and the app then silently can't toggle anything. Re-run

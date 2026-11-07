@@ -238,11 +238,11 @@ private fun Screen(onHowItWorks: () -> Unit) {
                     "Overlays can block payments — tap to turn each one off") { showOverlay = true }
             }
 
-            // Deep reset — for the "restart to unblock" cached block that the headless kill can't clear
-            ActionCard(Icons.Filled.Refresh, Color(0xFFB3261E), "Still blocked? Deep reset",
-                "Force-stop Play Services (real), then reopen GPay — or restart the phone") {
+            // Stuck/latched block — on GPay 356 only a reboot clears it (force-stop was tested: it doesn't).
+            ActionCard(Icons.Filled.Refresh, Color(0xFFB3261E), "Still blocked? Restart the phone",
+                "GPay 356: only a reboot clears the latch — a force-stop won't. (Tap for Play Services force-stop, for older versions.)") {
                 runCatching { ctx.startActivity(GpayFix.appInfoIntent(GpayFix.GMS)) }
-                toast(ctx, "Tap ‘Force stop’, then reopen Google Pay")
+                toast(ctx, "GPay 356 needs a phone restart. (Force-stop only helps older versions.)")
             }
 
             // Restore / share
