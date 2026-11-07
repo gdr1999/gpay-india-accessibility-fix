@@ -170,7 +170,7 @@ private fun Screen(onHowItWorks: () -> Unit) {
         )
     }
     if (showOverlay) OverlayAppsDialog(overlaySuspects, onDismiss = { showOverlay = false })
-    if (showAudit) A11yAuditDialog(onChanged = { tick++ }, onDismiss = { showAudit = false })
+    if (showAudit) A11yAuditDialog(granted = granted, onChanged = { tick++ }, onDismiss = { showAudit = false })
 
     Scaffold(topBar = {
         TopAppBar(
@@ -629,7 +629,7 @@ private fun OverlayAppsDialog(apps: List<GpayFix.AppItem>, onDismiss: () -> Unit
 // --- accessibility audit (classify + selectively disable) ---
 
 @Composable
-private fun A11yAuditDialog(onChanged: () -> Unit, onDismiss: () -> Unit) {
+private fun A11yAuditDialog(granted: Boolean, onChanged: () -> Unit, onDismiss: () -> Unit) {
     val ctx = LocalContext.current
     var version by remember { mutableStateOf(0) }
     val svcs = remember(version) { A11yAudit.services(ctx) }
@@ -641,6 +641,7 @@ private fun A11yAuditDialog(onChanged: () -> Unit, onDismiss: () -> Unit) {
     fun tierLabel(t: A11yAudit.Tier) = when (t) {
         A11yAudit.Tier.CONTROL -> "Controls device"; A11yAudit.Tier.READ -> "Reads screen"; A11yAudit.Tier.MINIMAL -> "Safe"
     }
+    fun openA11ySettings() = runCatching { ctx.startActivity(GpayFix.accessibilitySettings()) }
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
@@ -657,16 +658,28 @@ private fun A11yAuditDialog(onChanged: () -> Unit, onDismiss: () -> Unit) {
                         }
                     }
                 }
+                if (!granted) {
+                    Spacer(Modifier.height(6.dp))
+                    Surface(color = amber.copy(alpha = 0.12f), shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth()) {
+                        Text("The lights work with no setup. To switch services off in one tap, do the one-time adb setup (on the main screen) — or just turn them off yourself in Settings → Accessibility.",
+                            Modifier.padding(10.dp), style = MaterialTheme.typography.labelSmall, color = amber)
+                    }
+                }
                 Spacer(Modifier.height(6.dp))
-                if (controlOn > 0) {
+                if (granted && controlOn > 0) {
                     Button(onClick = { A11yAudit.disableControlling(ctx); version++; onChanged() },
                         modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = red)) {
                         Text("Turn off all $controlOn controlling service(s)")
                     }
                     Spacer(Modifier.height(8.dp))
+                } else if (!granted) {
+                    OutlinedButton(onClick = { openA11ySettings() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Open Accessibility settings")
+                    }
+                    Spacer(Modifier.height(8.dp))
                 }
-                LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                LazyColumn(Modifier.heightIn(max = 340.dp)) {
                     items(svcs) { s ->
                         Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             // stoplight
@@ -685,9 +698,15 @@ private fun A11yAuditDialog(onChanged: () -> Unit, onDismiss: () -> Unit) {
                                         color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
                             }
-                            Switch(checked = s.enabled, onCheckedChange = { on ->
-                                A11yAudit.setEnabled(ctx, s.component, on); version++; onChanged()
-                            })
+                            if (granted) {
+                                Switch(checked = s.enabled, onCheckedChange = { on ->
+                                    A11yAudit.setEnabled(ctx, s.component, on); version++; onChanged()
+                                })
+                            } else if (s.enabled) {
+                                TextButton(onClick = { openA11ySettings() }, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                                    Text("Settings ›", style = MaterialTheme.typography.labelMedium)
+                                }
+                            }
                         }
                     }
                 }

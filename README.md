@@ -192,6 +192,20 @@ digging.)
 Options / USB debugging** each OFF and a **READY / NOT-READY** verdict, so you can confirm the safe state
 in the notification shade before you pay.
 
+## Which UPI app is right for you?
+
+**General users (no automation apps): stick with Google Pay.** Its strictness is a genuine *security*
+strength — it's the most aggressive of the UPI apps at spotting the screen-control, overlay and
+screen-sharing tricks fraudsters use to drain UPI accounts. If you don't run automation/accessibility
+apps you'll never hit the block, and those checks are protecting you. Recommended for most people.
+
+**Power users (you run MacroDroid / Tasker / a gesture or sidebar app):** if you'd rather not toggle and
+reboot around every payment, a practical option is a UPI app that doesn't currently block on
+accessibility — **Paytm, PhonePe, BHIM, or your bank's own UPI app.** Same UPI rails, similar UX. Honest
+caveat: these apps still *read* accessibility state, any of them could tighten later (Google Pay did),
+and behaviour varies by version/region — so it's "works today," not a guarantee. This app + the stoplight
+audit is for when you specifically want to keep using Google Pay.
+
 ## How it works (no root, no Shizuku, no debugging left on)
 
 | Step | Mechanism | Permission |
