@@ -1,9 +1,11 @@
 package dev.gpayready
 
+import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ShortcutInfo
 import android.content.pm.ShortcutManager
 import android.graphics.Bitmap
@@ -55,6 +57,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -108,12 +111,26 @@ private fun Screen(onHowItWorks: () -> Unit) {
     var pendingImagePkg by remember { mutableStateOf<String?>(null) }
 
     val granted = remember(tick) { GpayFix.isWriteGranted(ctx) }
-    val a11yOn = remember(tick) { GpayFix.accessibilityOn(ctx) }
+    val pay = remember(tick) { GpayFix.payState(ctx) }
     val targets = remember(tick) { GpayFix.targetPackages(ctx) }
+    var debugOn by remember { mutableStateOf(GpayFix.debugMode(ctx)) }
 
     LaunchedEffect(tick) { GpayFix.rememberIfOn(ctx) }
     // Keep the status live (it can change from the automation / tile / another app).
-    LaunchedEffect(Unit) { while (true) { delay(1500); tick++ } }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1500); tick++
+            if (GpayFix.debugMode(ctx)) runCatching { DebugStatus.post(ctx) }
+        }
+    }
+
+    val requestNotif = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { tick++ }
+    fun needsNotifPerm() = Build.VERSION.SDK_INT >= 33 &&
+        ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+    // Debug mode defaults on → ask for notification permission once so the status can actually show.
+    LaunchedEffect(Unit) { if (GpayFix.debugMode(ctx) && needsNotifPerm()) requestNotif.launch(Manifest.permission.POST_NOTIFICATIONS) }
 
     val pickIcon = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia(),
@@ -162,24 +179,13 @@ private fun Screen(onHowItWorks: () -> Unit) {
         ) {
             Spacer(Modifier.height(2.dp))
 
-            // Status chip
-            val statusColor = if (granted) Color(0xFF1B7F3B) else Color(0xFFB3261E)
-            Surface(color = statusColor.copy(alpha = 0.12f), shape = RoundedCornerShape(16.dp)) {
-                Row(
-                    Modifier.fillMaxWidth().padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    Icon(if (granted) Icons.Filled.CheckCircle else Icons.Filled.Warning, null, tint = statusColor)
-                    Column {
-                        Text(if (granted) "Ready" else "Needs one-time adb setup (below)",
-                            fontWeight = FontWeight.Bold, color = statusColor)
-                        Text(if (a11yOn) "Accessibility: ON" else "Accessibility: OFF — ready to pay",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
+            // Pay-ready status (debug mode)
+            PayStatusCard(granted = granted, pay = pay, debugOn = debugOn,
+                onToggleDebug = { on ->
+                    GpayFix.setDebugMode(ctx, on); debugOn = on
+                    if (on && needsNotifPerm()) requestNotif.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    tick++
+                })
 
             // BUTTON 1 — Select apps
             ActionCard(Icons.Filled.Star, Color(0xFF6366F1), "Select apps",
@@ -219,6 +225,13 @@ private fun Screen(onHowItWorks: () -> Unit) {
                         if (on) GpayWatchService.start(ctx) else GpayWatchService.stop(ctx)
                     })
                 }
+            }
+
+            // Deep reset — for the "restart to unblock" cached block that the headless kill can't clear
+            ActionCard(Icons.Filled.Refresh, Color(0xFFB3261E), "Still blocked? Deep reset",
+                "Force-stop Play Services (real), then reopen GPay — or restart the phone") {
+                runCatching { ctx.startActivity(GpayFix.appInfoIntent(GpayFix.GMS)) }
+                toast(ctx, "Tap ‘Force stop’, then reopen Google Pay")
             }
 
             // Restore / share
@@ -570,6 +583,52 @@ private fun ActionCard(icon: ImageVector, color: Color, title: String, subtitle:
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+    }
+}
+
+@Composable
+private fun PayStatusCard(
+    granted: Boolean, pay: GpayFix.PayState, debugOn: Boolean,
+    onToggleDebug: (Boolean) -> Unit,
+) {
+    val green = Color(0xFF1B7F3B); val amber = Color(0xFFB26A00); val red = Color(0xFFB3261E)
+    val ready = granted && pay.ready
+    val color = when { !granted -> red; ready -> green; else -> amber }
+    Surface(color = color.copy(alpha = 0.12f), shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Icon(if (ready) Icons.Filled.CheckCircle else Icons.Filled.Warning, null, tint = color)
+                Column(Modifier.weight(1f)) {
+                    Text(when {
+                        !granted -> "Needs one-time adb setup (below)"
+                        ready -> "Ready to pay"
+                        else -> "Not ready — something is still on"
+                    }, fontWeight = FontWeight.Bold, color = color)
+                    Text("Debug mode — notifies you when all are off",
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Switch(checked = debugOn, onCheckedChange = onToggleDebug)
+            }
+            if (debugOn && granted) {
+                StatusRow("Accessibility", pay.a11yOn)
+                StatusRow("Developer Options", pay.devOn)
+                StatusRow("USB debugging", pay.usbOn)
+                Text("A different block — “device doesn't meet security standards” — is a Play Integrity check (beta OS, root, or an uncertified build), not these toggles, and can't be fixed by this app.",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatusRow(label: String, on: Boolean) {
+    val green = Color(0xFF1B7F3B); val amber = Color(0xFFB26A00)
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Icon(if (!on) Icons.Filled.CheckCircle else Icons.Filled.Warning, null,
+            tint = if (!on) green else amber, modifier = Modifier.size(18.dp))
+        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Text(if (on) "ON" else "OFF", fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.labelMedium, color = if (!on) green else amber)
     }
 }
 

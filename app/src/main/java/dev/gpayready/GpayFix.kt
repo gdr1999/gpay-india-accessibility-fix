@@ -139,6 +139,23 @@ object GpayFix {
     fun accessibilityOn(ctx: Context): Boolean =
         !Settings.Secure.getString(ctx.contentResolver, ENABLED_A11Y).isNullOrBlank()
 
+    fun devOptionsOn(ctx: Context): Boolean =
+        runCatching { Settings.Global.getInt(ctx.contentResolver, DEV, 0) == 1 }.getOrDefault(false)
+    fun usbDebugOn(ctx: Context): Boolean =
+        runCatching { Settings.Global.getInt(ctx.contentResolver, ADB, 0) == 1 }.getOrDefault(false)
+
+    /** The three things banking apps dislike; [ready] = all three OFF. */
+    data class PayState(val a11yOn: Boolean, val devOn: Boolean, val usbOn: Boolean) {
+        val ready: Boolean get() = !a11yOn && !devOn && !usbOn
+    }
+    fun payState(ctx: Context) = PayState(accessibilityOn(ctx), devOptionsOn(ctx), usbDebugOn(ctx))
+
+    /** App-Info screen for a package — used for a REAL "Force stop" (flushes the cached block that the
+     *  no-root [killBackground] cannot), e.g. Play Services when Google Pay is stuck in a blocked state. */
+    fun appInfoIntent(pkg: String): Intent =
+        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:$pkg"))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
     /** Save the currently-enabled accessibility services, then turn them all OFF. */
     fun disableAccessibility(ctx: Context): Boolean = runCatching {
         val cur = Settings.Secure.getString(ctx.contentResolver, ENABLED_A11Y).orEmpty()
@@ -202,7 +219,9 @@ object GpayFix {
     /** Restore everything the fix turned off (Developer Options + accessibility). Returns a11y count. */
     fun restoreAll(ctx: Context): Int {
         restoreDevOptions(ctx)
-        return restoreAccessibility(ctx)
+        val n = restoreAccessibility(ctx)
+        if (debugMode(ctx)) runCatching { DebugStatus.post(ctx) }
+        return n
     }
 
     /** Kill an app's cached/background process (headless; needs only KILL_BACKGROUND_PROCESSES). */
@@ -224,6 +243,7 @@ object GpayFix {
         disableForPay(ctx)
         killBackground(ctx, pkg)
         killBackground(ctx, GMS)
+        if (debugMode(ctx)) runCatching { DebugStatus.post(ctx) }
         if (open) openApp(ctx, pkg)
     }
 
@@ -233,6 +253,13 @@ object GpayFix {
     // --- the Usage-Access automation flag ---
     fun autoEnabled(ctx: Context): Boolean = prefs(ctx).getBoolean(KEY_AUTO, false)
     fun setAutoEnabled(ctx: Context, on: Boolean) = prefs(ctx).edit().putBoolean(KEY_AUTO, on).apply()
+
+    // --- debug / "pay-ready" status notification flag (on by default) ---
+    fun debugMode(ctx: Context): Boolean = prefs(ctx).getBoolean("debug_mode", true)
+    fun setDebugMode(ctx: Context, on: Boolean) {
+        prefs(ctx).edit().putBoolean("debug_mode", on).apply()
+        if (on) DebugStatus.post(ctx) else DebugStatus.clear(ctx)
+    }
 
     // --- first-run onboarding flag ---
     fun onboarded(ctx: Context): Boolean = prefs(ctx).getBoolean("onboarded", false)
