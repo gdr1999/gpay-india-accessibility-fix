@@ -116,6 +116,16 @@ headlessly. A **real force-stop** (one manual tap: **App info → Force stop**) 
 There is **no fully-headless, no-root way** to flush it (that would need Shizuku/root, which banking apps
 flag). On GPay **355** a toggle-off + reopen usually cleared it; **356** holds the block harder.
 
+> **Why it worked on 355 but not 356 — an update that closed the loophole (assumption, not confirmed).**
+> Best guess from the observed behaviour: GPay **355** appears to have re-checked **live / at launch**, so
+> turning accessibility **off** right before opening it was enough — the launch check saw no automation
+> service and allowed the payment. (The old "stop Play Services" step was decorative: on Android 14+ it
+> can't stop another app anyway.) GPay **356** seems to have **closed that loophole** by **latching** the
+> verdict — once it has seen an automation-capable service, it records a blocked state that a live
+> re-check no longer clears, which is why its own screen says *"restart your phone to unblock."* So on 356
+> the toggle alone is no longer sufficient; you need a real flush (restart / Force stop). This is inferred
+> from behaviour, **not** confirmed by Google.
+
 ### Three different Google Pay blocks — they are not the same problem
 
 | Message | Cause | Fixable by this app? |
