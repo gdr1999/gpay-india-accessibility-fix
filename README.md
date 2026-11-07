@@ -98,6 +98,36 @@ them the moment you leave the app** (with a short debounce so a mid-payment OTP/
 restore early). So your automation apps are only off for the few seconds you're actually using it. This
 works for **any app you select**, not just Google Pay.
 
+## If Google Pay still blocks you (GPay 356+)
+
+Google Pay India around **v356.1.4** made this block **stickier**. The giveaway is the wording
+**"Restart your phone to unblock payments."** Once GPay flags your device it **caches** that verdict, so
+turning accessibility off *afterwards* doesn't clear it — you have to **flush the cache**:
+
+- **Deep reset (in the app):** tap **"Still blocked? Deep reset"** → it opens **Play Services → App info**;
+  tap **Force stop** there (a *real* stop). Do the same for **Google Pay**, then reopen GPay.
+- **Or just restart the phone** — that's GPay's own instruction, and it always works.
+
+Why the one-tap fix isn't always enough on 356: stopping Play Services the no-root way
+(`killBackgroundProcesses`) is **not a real force-stop**, so it can't flush GPay's cached attestation. A
+real force-stop (one manual tap on App info) or a restart does. There is **no fully-headless, no-root way**
+to flush it — that would need Shizuku/root, which banking apps themselves flag, so it's deliberately avoided.
+(On GPay **355** a simple toggle-off + reopen usually cleared it; **356** caches harder.)
+
+### Three different Google Pay blocks — they are not the same problem
+
+| Message | Cause | Fixable by this app? |
+|---|---|---|
+| *"Payments blocked due to suspicious activity"* | An accessibility app is enabled | ✅ Turn accessibility off |
+| *"…Some apps have permission to make payments… Restart your phone to unblock"* | Same, but **cached** (GPay 356+) | ✅ Turn off **+ deep reset / restart** to flush |
+| *"Your device may not be secure / doesn't meet required security standards"* | **Play Integrity / attestation** failure (beta OS, root, unlocked bootloader, uncertified build) | ❌ **No** — not accessibility; this is an OS/device-integrity issue |
+
+### Debug mode
+
+**Debug mode** (on by default) shows a notification + an in-app card with **Accessibility / Developer
+Options / USB debugging** each OFF and a **READY / NOT-READY** verdict, so you can confirm the safe state
+in the notification shade before you pay.
+
 ## How it works (no root, no Shizuku, no debugging left on)
 
 | Step | Mechanism | Permission |
@@ -138,6 +168,11 @@ nudge the cached state.
 
 - This does **not** bypass any security. It toggles **your own** accessibility services — which you
   control — to the state Google Pay asks for, then restores them. Use it on your own device.
+- **GPay 356+ caches the block** (the *"restart to unblock"* wording). The no-root stop can't flush that
+  cache — use the in-app **Deep reset** (a real force-stop of Play Services) or restart the phone. See
+  [the section above](#if-google-pay-still-blocks-you-gpay-356).
+- The *"device doesn't meet required security standards"* block is a **Play Integrity** failure (beta OS,
+  root, unlocked bootloader, uncertified build), **not** accessibility — this app can't fix that one.
 - If Google changes the check, this may need updating. PRs welcome.
 
 ## Review it yourself, fork it, verify it
