@@ -84,8 +84,9 @@ MacroDroid/Tasker/launcher) runs:
 
 1. **Turn accessibility OFF** — saves your currently-enabled accessibility services, then clears them.
 2. **Turn Developer Options + USB/Wireless debugging OFF** — remembering what was on, to put back later.
-3. **Stop the target app** and **Stop Play Services** — kills their cached background processes so they
-   re-check cleanly on next open.
+3. **Nudge Play Services / the target app** — best-effort only. **Note:** on **Android 14+** a normal
+   app can only stop its *own* process, so this can't truly force-stop Play Services or Google Pay; a
+   real reset needs the in-app **Deep reset** (App info → Force stop) or a **restart** (see below).
 4. **Open the target app** — ready to use.
 
 Afterwards, **Restore everything** (button / QS tile / automation) turns accessibility **and** Developer
@@ -108,19 +109,29 @@ turning accessibility off *afterwards* doesn't clear it — you have to **flush 
   tap **Force stop** there (a *real* stop). Do the same for **Google Pay**, then reopen GPay.
 - **Or just restart the phone** — that's GPay's own instruction, and it always works.
 
-Why the one-tap fix isn't always enough on 356: stopping Play Services the no-root way
-(`killBackgroundProcesses`) is **not a real force-stop**, so it can't flush GPay's cached attestation. A
-real force-stop (one manual tap on App info) or a restart does. There is **no fully-headless, no-root way**
-to flush it — that would need Shizuku/root, which banking apps themselves flag, so it's deliberately avoided.
-(On GPay **355** a simple toggle-off + reopen usually cleared it; **356** caches harder.)
+Why the one-tap fix isn't always enough on 356: once GPay flags the device it holds the block until the
+state is **flushed**. On **Android 14+**, `killBackgroundProcesses()` can only stop the calling app's
+**own** process — it **cannot** force-stop Play Services or Google Pay — so the app can't flush the block
+headlessly. A **real force-stop** (one manual tap: **App info → Force stop**) or a **restart** does.
+There is **no fully-headless, no-root way** to flush it (that would need Shizuku/root, which banking apps
+flag). On GPay **355** a toggle-off + reopen usually cleared it; **356** holds the block harder.
 
 ### Three different Google Pay blocks — they are not the same problem
 
 | Message | Cause | Fixable by this app? |
 |---|---|---|
 | *"Payments blocked due to suspicious activity"* | An accessibility app is enabled | ✅ Turn accessibility off |
-| *"…Some apps have permission to make payments… Restart your phone to unblock"* | Same, but **cached** (GPay 356+) | ✅ Turn off **+ deep reset / restart** to flush |
-| *"Your device may not be secure / doesn't meet required security standards"* | **Play Integrity / attestation** failure (beta OS, root, unlocked bootloader, uncertified build) | ❌ **No** — not accessibility; this is an OS/device-integrity issue |
+| *"…Some apps have permission to make payments… Restart your phone to unblock"* | Same, but **latched** (GPay 356+) | ✅ Turn off **+ restart** to clear the latch |
+| *"Your device may not be secure / doesn't meet required security standards"* | **Device-integrity** Play Integrity failure (beta OS, root, unlocked bootloader, uncertified build) | ❌ **No** — not accessibility; an OS/device-integrity issue |
+
+> **It may be *app-access risk*, not hardware integrity.** Google's `appAccessRiskVerdict`
+> (controlling / capturing / overlay apps) specifically targets automation services like **MacroDroid UI
+> Interaction**, Tasker and AutoInput, and apps with **"Display over other apps."** If toggling
+> everything off **+ a real restart** still blocks you, try leaving **MacroDroid UI Interaction**
+> (specifically) off, and/or revoking **Display over other apps** for your automation apps, then
+> restart — that's the fix reported for this exact MacroDroid setup. Check your certification at
+> **Settings → Security & privacy → More security & privacy → Android OS verification** (want *Certified
+> · Locked · Verified*).
 
 ### Debug mode
 
@@ -134,13 +145,14 @@ in the notification shade before you pay.
 |------|-----------|------------|
 | Accessibility off/on | writes `enabled_accessibility_services` (saved & restored) | `WRITE_SECURE_SETTINGS` — granted **once over adb** |
 | Dev Options / USB debugging off/on | writes `development_settings_enabled` / `adb_enabled` / `adb_wifi_enabled` (saved & restored) | `WRITE_SECURE_SETTINGS` |
-| Stop target app / Play Services | `ActivityManager.killBackgroundProcesses()` | `KILL_BACKGROUND_PROCESSES` (normal, auto-granted) |
+| Nudge target app / Play Services | `ActivityManager.killBackgroundProcesses()` — best-effort; **Android 14+: own process only** | `KILL_BACKGROUND_PROCESSES` |
+| Real reset (stuck/latched block) | **App info → Force stop** (manual), or a device **restart** | — |
 | Auto on open/close | `UsageStatsManager` foreground-app events | Usage Access (granted in Settings) |
 
 No Shizuku, no root, and no wireless/USB debugging is *left on* — the fix turns debugging off (banking
-apps read that state). `killBackgroundProcesses` is **not** a full `am force-stop` (it won't stop a
-running foreground service), but turning accessibility off is the actual block-clear; the kills just
-nudge the cached state.
+apps read that state). Turning accessibility off is the actual block-clear. The "stop" step is
+best-effort and, on **Android 14+**, can't truly stop another app — so a stuck/latched block needs a real
+**Force stop** (App info) or a **restart**.
 
 > Note: because the fix turns **USB debugging off**, running it drops any active adb/cable session — that's
 > intended. **Restore everything** (or the automation on close) turns it back on if it was on before.

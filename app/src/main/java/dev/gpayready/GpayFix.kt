@@ -229,15 +229,17 @@ object GpayFix {
         return n
     }
 
-    /** Restore AFTER using a payment app, safely: kill the target apps' + Play Services' cached
-     *  processes FIRST so their LIVE AccessibilityStateChange listeners are gone before accessibility
-     *  is turned back on. Otherwise Google Pay (which watches that event while its process lingers in
-     *  the background) re-latches the block — and the NEXT time you open it, you're already flagged.
-     *  This is the fix for "accessibility was off but GPay still blocked me". */
+    /** Restore AFTER using a payment app: BEST-EFFORT nudge the target apps' + Play Services' processes
+     *  before turning accessibility back on, so Google Pay's live AccessibilityStateChange listener is
+     *  (ideally) gone before accessibility returns — otherwise it can re-latch the block, so the NEXT
+     *  open is already flagged.
+     *  CAVEAT: on Android 14+, killBackgroundProcesses can only stop THIS app's own process, so it can't
+     *  actually kill Google Pay. On modern Android the reliable way to avoid the re-latch is to keep
+     *  "restore on close" OFF for Google Pay and clear a latch with a real restart. */
     fun restoreAfterUse(ctx: Context): Int {
         targetPackages(ctx).forEach { killBackground(ctx, it) }
         killBackground(ctx, GMS)
-        Log.i(TAG, "killed targets before restore @ ${System.currentTimeMillis()}")
+        Log.i(TAG, "restoreAfterUse (kill best-effort) @ ${System.currentTimeMillis()}")
         return restoreAll(ctx)
     }
 
