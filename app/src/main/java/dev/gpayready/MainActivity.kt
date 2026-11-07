@@ -111,6 +111,7 @@ private fun Screen(onHowItWorks: () -> Unit) {
     var pendingImagePkg by remember { mutableStateOf<String?>(null) }
     var showOverlay by remember { mutableStateOf(false) }
     val overlaySuspects = remember { OverlayApps.suspects(ctx) }
+    var showAudit by remember { mutableStateOf(false) }
 
     val granted = remember(tick) { GpayFix.isWriteGranted(ctx) }
     val pay = remember(tick) { GpayFix.payState(ctx) }
@@ -169,6 +170,7 @@ private fun Screen(onHowItWorks: () -> Unit) {
         )
     }
     if (showOverlay) OverlayAppsDialog(overlaySuspects, onDismiss = { showOverlay = false })
+    if (showAudit) A11yAuditDialog(onChanged = { tick++ }, onDismiss = { showAudit = false })
 
     Scaffold(topBar = {
         TopAppBar(
@@ -229,6 +231,14 @@ private fun Screen(onHowItWorks: () -> Unit) {
                     })
                 }
             }
+
+            // Accessibility audit — classify which services GPay flags (can control/capture) vs safe ones,
+            // and turn off only the risky ones (keep the harmless ones on permanently).
+            val controlCount = remember(tick) { A11yAudit.controllingCount(ctx) }
+            ActionCard(Icons.Filled.Warning,
+                if (controlCount > 0) Color(0xFFB26A00) else Color(0xFF1B7F3B),
+                "Accessibility audit" + if (controlCount > 0) " ($controlCount trip GPay)" else " (all clear)",
+                "See which services GPay blocks — turn off only those, keep the rest") { showAudit = true }
 
             // Overlay apps — "Display over other apps" trips GPay's KNOWN_OVERLAYS check (and breaks
             // browser popups). We can't toggle another app's overlay no-root, but we can jump you to each.
@@ -611,6 +621,78 @@ private fun OverlayAppsDialog(apps: List<GpayFix.AppItem>, onDismiss: () -> Unit
                         }
                     }
                 }
+            }
+        },
+    )
+}
+
+// --- accessibility audit (classify + selectively disable) ---
+
+@Composable
+private fun A11yAuditDialog(onChanged: () -> Unit, onDismiss: () -> Unit) {
+    val ctx = LocalContext.current
+    var version by remember { mutableStateOf(0) }
+    val svcs = remember(version) { A11yAudit.services(ctx) }
+    val controlOn = svcs.count { it.enabled && it.tier == A11yAudit.Tier.CONTROL }
+    val red = Color(0xFFB3261E); val amber = Color(0xFFB26A00); val green = Color(0xFF1B7F3B)
+    fun tierColor(t: A11yAudit.Tier) = when (t) {
+        A11yAudit.Tier.CONTROL -> red; A11yAudit.Tier.READ -> amber; A11yAudit.Tier.MINIMAL -> green
+    }
+    fun tierLabel(t: A11yAudit.Tier) = when (t) {
+        A11yAudit.Tier.CONTROL -> "Controls device"; A11yAudit.Tier.READ -> "Reads screen"; A11yAudit.Tier.MINIMAL -> "Safe"
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+        title = { Text("Which apps trip Google Pay") },
+        text = {
+            Column {
+                Text("Google Pay blocks accessibility services that can control or capture the screen — not all of them. Turn off the red ones (keep the rest), then reboot to clear the block.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(Modifier.padding(top = 8.dp, bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    listOf(red to "Blocks GPay", amber to "Maybe", green to "Safe").forEach { (c, t) ->
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Box(Modifier.size(12.dp).clip(CircleShape).background(c))
+                            Text(t, style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                if (controlOn > 0) {
+                    Button(onClick = { A11yAudit.disableControlling(ctx); version++; onChanged() },
+                        modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = red)) {
+                        Text("Turn off all $controlOn controlling service(s)")
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+                LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                    items(svcs) { s ->
+                        Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            // stoplight
+                            Box(Modifier.size(14.dp).clip(CircleShape).background(tierColor(s.tier)))
+                            Spacer(Modifier.width(10.dp))
+                            AppIcon(s.pkg, 34)
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(s.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Surface(color = tierColor(s.tier).copy(alpha = 0.15f), shape = RoundedCornerShape(6.dp)) {
+                                        Text(tierLabel(s.tier), Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
+                                            style = MaterialTheme.typography.labelSmall, color = tierColor(s.tier))
+                                    }
+                                    Text(s.powers(), style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                            Switch(checked = s.enabled, onCheckedChange = { on ->
+                                A11yAudit.setEnabled(ctx, s.component, on); version++; onChanged()
+                            })
+                        }
+                    }
+                }
+                Text("Heuristic from each service's capabilities — confirm by rebooting and paying. “Reads screen”/“Safe” can usually stay on.",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
     )
