@@ -237,7 +237,7 @@ private fun Screen(onHowItWorks: () -> Unit) {
             // Restore / share
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedButton(onClick = {
-                    val n = GpayFix.restoreAll(ctx)
+                    val n = GpayFix.restoreAfterUse(ctx)
                     toast(ctx, if (n > 0) "Restored $n service(s)" else "Nothing saved to restore yet")
                     tick++
                 }, modifier = Modifier.weight(1f)) {

@@ -97,7 +97,13 @@ class GpayWatchService : Service() {
         if (armed && now - lastTargetAt >= RESTORE_DELAY_MS) {
             armed = false
             if (GpayFix.restoreOnClose(applicationContext, lastTarget)) {
-                GpayFix.restoreAll(applicationContext)
+                // Kill the app we just left (+ Play Services) BEFORE restoring accessibility, then wait a
+                // beat so their live AccessibilityStateChange listeners are gone first. Restoring while
+                // Google Pay's process is still alive re-latches the block on the next open.
+                val app = applicationContext
+                lastTarget?.let { GpayFix.killBackground(app, it) }
+                GpayFix.killBackground(app, GpayFix.GMS)
+                handler.postDelayed({ GpayFix.restoreAll(app) }, 1200)
             }
         }
     }

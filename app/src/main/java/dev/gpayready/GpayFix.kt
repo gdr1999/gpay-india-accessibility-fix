@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.provider.Settings
+import android.util.Log
 
 /**
  * The whole fix, in one object. Google Pay India started blocking payments when any accessibility
@@ -26,6 +27,7 @@ import android.provider.Settings
 object GpayFix {
     const val GPAY = "com.google.android.apps.nbu.paisa.user" // Google Pay India (Tez)
     const val GMS = "com.google.android.gms"                   // Google Play services
+    private const val TAG = "GPAYREADY"
 
     private const val PREFS = "gpayready"
     private const val KEY_SAVED = "saved_a11y"
@@ -162,6 +164,7 @@ object GpayFix {
         if (cur.isNotBlank()) prefs(ctx).edit().putString(KEY_SAVED, cur).apply()
         Settings.Secure.putString(ctx.contentResolver, ENABLED_A11Y, "")
         Settings.Secure.putInt(ctx.contentResolver, A11Y_ENABLED, 0)
+        Log.i(TAG, "accessibility OFF @ ${System.currentTimeMillis()}")
         true
     }.getOrDefault(false)
 
@@ -183,7 +186,9 @@ object GpayFix {
         return runCatching {
             Settings.Secure.putString(ctx.contentResolver, ENABLED_A11Y, saved)
             Settings.Secure.putInt(ctx.contentResolver, A11Y_ENABLED, 1)
-            saved.split(":").count { it.isNotBlank() }
+            val n = saved.split(":").count { it.isNotBlank() }
+            Log.i(TAG, "accessibility RESTORED ($n) @ ${System.currentTimeMillis()}")
+            n
         }.getOrDefault(0)
     }
 
@@ -222,6 +227,18 @@ object GpayFix {
         val n = restoreAccessibility(ctx)
         if (debugMode(ctx)) runCatching { DebugStatus.post(ctx) }
         return n
+    }
+
+    /** Restore AFTER using a payment app, safely: kill the target apps' + Play Services' cached
+     *  processes FIRST so their LIVE AccessibilityStateChange listeners are gone before accessibility
+     *  is turned back on. Otherwise Google Pay (which watches that event while its process lingers in
+     *  the background) re-latches the block — and the NEXT time you open it, you're already flagged.
+     *  This is the fix for "accessibility was off but GPay still blocked me". */
+    fun restoreAfterUse(ctx: Context): Int {
+        targetPackages(ctx).forEach { killBackground(ctx, it) }
+        killBackground(ctx, GMS)
+        Log.i(TAG, "killed targets before restore @ ${System.currentTimeMillis()}")
+        return restoreAll(ctx)
     }
 
     /** Kill an app's cached/background process (headless; needs only KILL_BACKGROUND_PROCESSES). */
