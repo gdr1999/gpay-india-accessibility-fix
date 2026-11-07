@@ -109,6 +109,8 @@ private fun Screen(onHowItWorks: () -> Unit) {
     var homeDialogPkg by remember { mutableStateOf<String?>(null) }
     var tileDialogPkg by remember { mutableStateOf<String?>(null) }
     var pendingImagePkg by remember { mutableStateOf<String?>(null) }
+    var showOverlay by remember { mutableStateOf(false) }
+    val overlaySuspects = remember { OverlayApps.suspects(ctx) }
 
     val granted = remember(tick) { GpayFix.isWriteGranted(ctx) }
     val pay = remember(tick) { GpayFix.payState(ctx) }
@@ -166,6 +168,7 @@ private fun Screen(onHowItWorks: () -> Unit) {
             onDismiss = { tileDialogPkg = null },
         )
     }
+    if (showOverlay) OverlayAppsDialog(overlaySuspects, onDismiss = { showOverlay = false })
 
     Scaffold(topBar = {
         TopAppBar(
@@ -225,6 +228,14 @@ private fun Screen(onHowItWorks: () -> Unit) {
                         if (on) GpayWatchService.start(ctx) else GpayWatchService.stop(ctx)
                     })
                 }
+            }
+
+            // Overlay apps — "Display over other apps" trips GPay's KNOWN_OVERLAYS check (and breaks
+            // browser popups). We can't toggle another app's overlay no-root, but we can jump you to each.
+            if (overlaySuspects.isNotEmpty()) {
+                ActionCard(Icons.Filled.Warning, Color(0xFFB26A00),
+                    "Apps that can draw over GPay (${overlaySuspects.size})",
+                    "Overlays can block payments — tap to turn each one off") { showOverlay = true }
             }
 
             // Deep reset — for the "restart to unblock" cached block that the headless kill can't clear
@@ -558,6 +569,45 @@ private fun AppPickerDialog(selected: List<String>, onDone: (List<String>) -> Un
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
+                        }
+                    }
+                }
+            }
+        },
+    )
+}
+
+// --- overlay ("Display over other apps") manager ---
+
+@Composable
+private fun OverlayAppsDialog(apps: List<GpayFix.AppItem>, onDismiss: () -> Unit) {
+    val ctx = LocalContext.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+        title = { Text("Apps drawing over the screen") },
+        text = {
+            Column {
+                Text("Any of these with “Display over other apps” on can make Google Pay block you (and break browser popups). Android won't let this app turn them off for you — tap one to open its toggle and turn it OFF yourself. Tip: when your browser popups work again, the overlay is gone.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(8.dp))
+                LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                    items(apps) { app ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable {
+                                runCatching { ctx.startActivity(OverlayApps.settingsIntent(app.pkg)) }
+                            }.padding(vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            AppIcon(app.pkg, 34)
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(app.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(app.pkg, style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            Text("Turn off ›", style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary)
                         }
                     }
                 }

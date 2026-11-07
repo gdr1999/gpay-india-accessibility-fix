@@ -143,6 +143,24 @@ flag). On GPay **355** a toggle-off + reopen usually cleared it; **356** holds t
 > **Settings → Security & privacy → More security & privacy → Android OS verification** (want *Certified
 > · Locked · Verified*).
 
+### Overlays, and the free "overlay detector" trick
+
+An app with **"Display over other apps"** *actively drawing* on screen does two things at once:
+- Google Pay's **`KNOWN_OVERLAYS`** risk check flags it and can block payments — **even with accessibility
+  off** (it's a *separate* trigger from the accessibility one).
+- Your browser (Chrome / Brave / any) **stops showing website popups** — Android marks the window
+  "obscured" (`FLAG_WINDOW_IS_OBSCURED`) when an overlay covers it.
+
+So **your browser is a free, live overlay detector**: if website popups are broken, an overlay is active
+*right now*. Turn **Display over other apps** OFF for your overlay apps — Dynamic-Island clones (e.g.
+Material Capsule), sidebar launchers (e.g. Panels), floating-bubble apps — **one at a time until popups
+work again**. That app is the culprit, and it's very likely what Google Pay is flagging too.
+
+The app has an **"Apps that can draw over GPay"** list that jumps you straight to each app's overlay
+toggle. (Android won't let one app turn another's overlay off without root — `MANAGE_APP_OPS_MODES` isn't
+adb-grantable the way `WRITE_SECURE_SETTINGS` is — so you flip them yourself; the list just saves the
+digging.)
+
 ### Debug mode
 
 **Debug mode** (on by default) shows a notification + an in-app card with **Accessibility / Developer
