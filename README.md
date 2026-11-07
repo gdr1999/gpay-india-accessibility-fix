@@ -101,20 +101,34 @@ works for **any app you select**, not just Google Pay.
 
 ## If Google Pay still blocks you (GPay 356+)
 
-Google Pay India around **v356.1.4** made this block **stickier**. The giveaway is the wording
-**"Restart your phone to unblock payments."** Once GPay flags your device it **caches** that verdict, so
-turning accessibility off *afterwards* doesn't clear it — you have to **flush the cache**:
+**Confirmed on a Pixel 11 (Android 17), Nov 2026.** Google Pay India **356** turned a simple "check at
+launch" into a **latch**, and it arrived as a **server-side rollout**: the 356 app was installed on 29 Oct
+but the behaviour only changed days later, and non-beta users report it too — so it's a gradual flag flip
+on Google's side, not something wrong with your device. What was verified on-device:
 
-- **Deep reset (in the app):** tap **"Still blocked? Deep reset"** → it opens **Play Services → App info**;
-  tap **Force stop** there (a *real* stop). Do the same for **Google Pay**, then reopen GPay.
-- **Or just restart the phone** — that's GPay's own instruction, and it always works.
+- **Accessibility is the trigger.** Accessibility **OFF + a real reboot → payments work.** Turning *any*
+  automation accessibility service back on **re-flags** it (not only MacroDroid UI Interaction).
+- **It's a latch that only a reboot reliably clears.** On 356, turning accessibility off *afterwards* is
+  **not enough** — once flagged you stay blocked until the state is flushed, and a **real reboot** is the
+  proven clear.
+- **The app can't do that last step.** On **Android 14+**, `killBackgroundProcesses()` only stops the
+  app's *own* process, so it **cannot** force-stop Play Services or Google Pay, and no normal app can
+  reboot. So the app reliably turns accessibility off, but **clearing the latch is a manual reboot** (or
+  maybe the in-app **Deep reset** — not yet confirmed to clear it without a reboot).
 
-Why the one-tap fix isn't always enough on 356: once GPay flags the device it holds the block until the
-state is **flushed**. On **Android 14+**, `killBackgroundProcesses()` can only stop the calling app's
-**own** process — it **cannot** force-stop Play Services or Google Pay — so the app can't flush the block
-headlessly. A **real force-stop** (one manual tap: **App info → Force stop**) or a **restart** does.
-There is **no fully-headless, no-root way** to flush it (that would need Shizuku/root, which banking apps
-flag). On GPay **355** a toggle-off + reopen usually cleared it; **356** holds the block harder.
+**The reliable no-root recipe (works for everyone):**
+1. **Accessibility (+ Developer Options) OFF** — the app does this (needs the one-time adb grant below).
+2. **Reboot** to clear the latch. *(Or try the in-app **"Still blocked? Deep reset"** — App info → Force
+   stop on Play Services + Google Pay — and see if it clears without a full reboot.)*
+3. **Pay before turning accessibility back on** — turning it on re-flags you (needs another clear).
+
+> **Reinstalling the app? Re-grant the permission.** The `pm grant` is **per-install** — uninstalling or
+> reinstalling **revokes** it, and the app then silently can't toggle anything. Re-run
+> `adb shell pm grant dev.gpayready android.permission.WRITE_SECURE_SETTINGS` and confirm the app shows
+> **"Ready"** (not "Needs one-time adb setup"). Debug mode shows Accessibility flipping OFF when the fix runs.
+
+> **On the Google Pay beta?** If your Play Store page says *"You're a beta tester,"* you got 356 early —
+> leaving the beta (and reverting to the stable build) may delay this until the rollout reaches stable.
 
 > **Why it worked on 355 but not 356 — an update that closed the loophole (assumption, not confirmed).**
 > Best guess from the observed behaviour: GPay **355** appears to have re-checked **live / at launch**, so
@@ -154,7 +168,14 @@ An app with **"Display over other apps"** *actively drawing* on screen does two 
 So **your browser is a free, live overlay detector**: if website popups are broken, an overlay is active
 *right now*. Turn **Display over other apps** OFF for your overlay apps — Dynamic-Island clones (e.g.
 Material Capsule), sidebar launchers (e.g. Panels), floating-bubble apps — **one at a time until popups
-work again**. That app is the culprit, and it's very likely what Google Pay is flagging too.
+work again**. That app is the overlay culprit.
+
+> **Device note (Nov 2026):** on our Pixel the overlay turned out to be **Panels** — turning its overlay
+> off **fixed the browser but did *not* fix Google Pay** (that block was the **accessibility** one). So
+> overlays and accessibility are *independent* axes: clear overlays to rule them out and to get your
+> browser popups back, but don't expect it to fix payments on its own. If the Brave/Chrome geolocation
+> prompt (try `browserleaks.com/geo`) says *"Close any bubbles or overlays from other apps,"* an overlay
+> is live — kill it, then tackle accessibility + reboot separately for GPay.
 
 The app has an **"Apps that can draw over GPay"** list that jumps you straight to each app's overlay
 toggle. (Android won't let one app turn another's overlay off without root — `MANAGE_APP_OPS_MODES` isn't
